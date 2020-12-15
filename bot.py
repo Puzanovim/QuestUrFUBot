@@ -286,7 +286,8 @@ async def work_func(message: types.Message, state: FSMContext):
         else:
             markup = ReplyKeyboardRemove()
         # send question
-        await message.reply(text, reply_markup=markup, reply=False)
+        if text != "":
+            await message.reply(text, reply_markup=markup, reply=False)
         # add photo
         if question["Photo"]:
             try:
@@ -302,6 +303,12 @@ async def work_func(message: types.Message, state: FSMContext):
             except Exception as e:
                 print(e)
                 await message.reply(MESSAGES["duck"] + MESSAGES["error_photo"], reply_markup=markup, reply=False)
+        if current_question == 9:
+            db.increment_current_question(user_id, current_question)
+            text = question["Move"] + MESSAGES["go"]
+            go_btn = KeyboardButton("Поехали!")
+            markup.add(go_btn)
+            await Quest.next()
     else:
         # if user_answer[0] != ".":  # проверяем текущий вопрос
         question = questions[current_question]
@@ -316,7 +323,7 @@ async def work_func(message: types.Message, state: FSMContext):
             await state.finish()
         else:
             db.increment_current_question(user_id, current_question)
-            text = question["move"] + MESSAGES["go"]
+            text = question["Move"] + MESSAGES["go"]
             go_btn = KeyboardButton("Поехали!")
             markup.add(go_btn)
             await Quest.next()
