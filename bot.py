@@ -29,6 +29,29 @@ async def process_help_command(message: types.Message):
     await message.reply(MESSAGES['help'], reply=False)
 
 
+@dp.message_handler(commands=['result'])
+async def process_result_command(message: types.Message):
+    text = MESSAGES["result"] + str(db.get_result(message.from_user.id))
+    await message.reply(text, reply=False)
+
+
+@dp.message_handler(commands=["answers"])
+async def process_answer_command(message: types.Message):
+    if db.get_current_question(message.from_user.id) > 15:
+        text = "Ответы на квест:\n" \
+               "------------------------------------------------------\n"
+        for number in questions:
+            if number != 9:
+                q = questions[number]
+                question = q["Question"]
+                answer = q["Answer"]
+                text += f"Вопрос номер: {number}\nВопрос: {question}\nОтвет: {answer}\n" \
+                        f"------------------------------------------------------\n"
+        await message.reply(text, reply=False)
+    else:
+        await message.reply(MESSAGES['not_end'], reply=False)
+
+
 @dp.message_handler(state=Registration.name_team)
 async def process_name_team(message: types.Message, state: FSMContext):
     """
@@ -126,25 +149,16 @@ async def start_quest(message: types.Message, state: FSMContext):
                 markup.add(choice_btn)
         else:
             markup = ReplyKeyboardRemove()
-        # send question
-        if text != "":
-            await message.reply(text, reply_markup=markup, reply=False)
-        # add photo
         if question["Photo"]:
+            # add photo
             try:
                 img = "yura.png"
-                await bot.send_photo(message.from_user.id, photo=open(img, 'rb'), caption=MESSAGES["duck"])
+                await bot.send_photo(message.from_user.id, photo=open(img, 'rb'), caption=text)
             except Exception as e:
                 print(e)
-        # add duck task
-        if question["Duck"]:
-            try:
-                img = str(current_question) + ".png"
-                await bot.send_photo(message.from_user.id, photo=open(img, 'rb'))
-                await bot.send_photo(message.from_user.id, photo=open("duck.png", 'rb'), caption=MESSAGES["duck"])
-            except Exception as e:
-                print(e)
-                await message.reply(MESSAGES["duck"] + MESSAGES["error_photo"], reply_markup=markup, reply=False)
+        elif text != "":
+            # send question
+            await message.reply(text, reply_markup=markup, reply=False)
         if current_question == 9:
             db.increment_current_question(message.from_user.id, current_question)
             text = question["Move"] + MESSAGES["go"]
@@ -157,90 +171,105 @@ async def start_quest(message: types.Message, state: FSMContext):
 
 @dp.message_handler(state=Quest)
 async def work_func(message: types.Message, state: FSMContext):
-    user_answer = message.text.lower()
-    user_id: int = message.from_user.id
-    current_question: int = db.get_current_question(user_id)
-    markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-
-    async with state.proxy() as data:
-        data[current_question] = message.text
-
-    if current_question > len(questions):
-        text = MESSAGES['you are finished']
-        markup = ReplyKeyboardRemove()
-        await message.reply(text, reply_markup=markup, reply=False)
-
-    if user_answer == "поехали!":  # задаем следующий вопрос
-        question = questions[current_question]
-        await message.reply(question["Place"], reply=False)
-        text = question['Question']
-
-        # markup
-        if len(question['Choices']) > 1:
-            for choice in question['Choices']:
-                choice_btn = KeyboardButton(choice)
-                markup.add(choice_btn)
-        else:
-            markup = ReplyKeyboardRemove()
-
-        # add photo
-        if question["Photo"]:
-            try:
-                img = "yura.png"
-                await bot.send_photo(message.from_user.id, photo=open(img, 'rb'),
-                                     caption=text, reply_markup=markup)
-            except Exception as e:
-                print(e)
-                await message.reply(text, reply_markup=markup, reply=False)
-        elif text != "":
-            # send question
-            await message.reply(text, reply_markup=markup, reply=False)
-        # add duck task
-        if question["Duck"]:
-            try:
-                img = str(current_question) + ".png"
-                await bot.send_photo(message.from_user.id, photo=open(img, 'rb'))
-                await bot.send_photo(message.from_user.id, photo=open("duck.png", 'rb'), caption=MESSAGES["duck"])
-            except Exception as e:
-                print(e)
-                await message.reply(MESSAGES["duck"] + MESSAGES["error_photo"], reply_markup=markup, reply=False)
-        if current_question == 9:
-            db.increment_current_question(user_id, current_question)
-            text = question["Move"] + MESSAGES["go"]
-            markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-            go_btn = KeyboardButton("Поехали!")
-            markup.add(go_btn)
-            await Quest.next()
-            await message.reply(text, reply_markup=markup, reply=False)
+    if message.text[0] == "/":
+        await state.finish()
+        await open_handler(message)
     else:
-        # if user_answer[0] != ".":  # проверяем текущий вопрос
-        question = questions[current_question]
-        true_answer = question['Answer'].lower()
+        user_answer = message.text.lower()
+        user_id: int = message.from_user.id
+        current_question: int = db.get_current_question(user_id)
+        markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
 
-        if user_answer == true_answer:
-            db.set_point(user_id, current_question)
+        async with state.proxy() as data:
+            data[current_question] = message.text
 
-        if current_question == len(questions):
-            db.increment_current_question(user_id, current_question)
-            text = MESSAGES['the_end']
+        if current_question > len(questions):
+            text = MESSAGES['you are finished']
             markup = ReplyKeyboardRemove()
-            await state.finish()
+            await message.reply(text, reply_markup=markup, reply=False)
+
+        if user_answer == "поехали!":  # задаем следующий вопрос
+            question = questions[current_question]
+            await message.reply(question["Place"], reply=False)
+            text = question['Question']
+
+            # markup
+            if len(question['Choices']) > 1:
+                for choice in question['Choices']:
+                    choice_btn = KeyboardButton(choice)
+                    markup.add(choice_btn)
+            else:
+                markup = ReplyKeyboardRemove()
+
+            if question["Photo"]:
+                # add photo
+                try:
+                    img = "yura.png"
+                    await bot.send_photo(message.from_user.id, photo=open(img, 'rb'),
+                                         caption=text, reply_markup=markup)
+                except Exception as e:
+                    print(e)
+                    await message.reply(text, reply_markup=markup, reply=False)
+            elif text != "":
+                # send question
+                await message.reply(text, reply_markup=markup, reply=False)
+            if current_question == 9:
+                db.increment_current_question(user_id, current_question)
+                text = question["Move"] + MESSAGES["go"]
+                markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+                go_btn = KeyboardButton("Поехали!")
+                markup.add(go_btn)
+                await Quest.next()
+                await message.reply(text, reply_markup=markup, reply=False)
         else:
-            db.increment_current_question(user_id, current_question)
-            text = question["Move"] + MESSAGES["go"]
-            go_btn = KeyboardButton("Поехали!")
-            markup.add(go_btn)
-            await Quest.next()
-        await message.reply(text, reply_markup=markup, reply=False)
+            question = questions[current_question]
+            true_answer = question['Answer'].lower()
+
+            if user_answer == true_answer:
+                db.set_point(user_id, current_question)
+
+            if current_question == len(questions):
+                db.increment_current_question(user_id, current_question)
+                text = MESSAGES['the_end']
+                markup = ReplyKeyboardRemove()
+                await state.finish()
+            else:
+                db.increment_current_question(user_id, current_question)
+                text = question["Move"] + MESSAGES["go"]
+                go_btn = KeyboardButton("Поехали!")
+                markup.add(go_btn)
+                await Quest.next()
+            await message.reply(text, reply_markup=markup, reply=False)
 
 
 @dp.message_handler()
 async def echo(message: types.Message):
-    if message.text in MESSAGES.keys():
+    if message.text.lower() in MESSAGES.keys():
         text = MESSAGES[message.text]
     else:
         text = MESSAGES['unknown']
     await message.reply(text, reply=False)
+
+
+async def open_handler(message: types.Message):
+    await message.reply(MESSAGES["get_out_from_quest"], reply=False)
+    await get_handler_by_name(message)
+
+
+async def get_handler_by_name(message: types.Message):
+    name = message.text
+    if name == "/start":
+        await process_start_command(message)
+    elif name == "/help":
+        await process_help_command(message)
+    elif name == "/answers":
+        await process_answer_command(message)
+    elif name == "/start_Quest":
+        await start_quest(message)
+    elif name == "/result":
+        await process_result_command(message)
+    else:
+        await echo(message)
 
 
 executor.start_polling(dp, skip_updates=True)
