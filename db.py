@@ -37,37 +37,37 @@ class Db:
             return True
         return False
 
-    def create_team(self, user_id, name=""):
+    def create_team(self, user_id, name_team=""):
         exist = self.count(user_id)
         if not exist:
-            sql = "INSERT INTO `teams_quest` (`user_id`, `name`) VALUES (%s, %s)"
-            self.request = self.query(sql, (user_id, name))
+            sql = "INSERT INTO `teams_quest` (`user_id`, `name_team`) VALUES (%s, %s)"
+            self.request = self.query(sql, (user_id, name_team))
             sql = "INSERT INTO `points_table_quest` (`user_id`, `current_question`) VALUES (%s, %s)"
             self.request = self.query(sql, (user_id, 0))
             print("Db().create_team(): Created")
         else:
-            sql = "UPDATE `teams_quest` SET `name`=%s WHERE `user_id`=%s"
-            self.request = self.query(sql, (name, user_id))
+            sql = "UPDATE `teams_quest` SET `name_team`=%s WHERE `user_id`=%s"
+            self.request = self.query(sql, (name_team, user_id))
             print("Db().create_team(): Updated")
 
-    def update_name(self, user_id, name=""):
+    def update_name_team(self, user_id, name_team=""):
         exist = self.count(user_id)
         if exist:
-            sql = "UPDATE `teams_quest` SET `name`=%s WHERE `user_id`=%s"
-            self.request = self.query(sql, (name, user_id))
-            print("Db().update_name(): Updated")
+            sql = "UPDATE `teams_quest` SET `name_team`=%s WHERE `user_id`=%s"
+            self.request = self.query(sql, (name_team, user_id))
+            print("Db().update_name_team(): Updated")
             return 1
         else:
             return 0
 
-    def get_name(self, user_id):
+    def get_name_team(self, user_id):
         exist = self.count(user_id)
         if exist:
             sql = "SELECT * FROM `teams_quest` WHERE `user_id`=%s"
             self.request = self.query(sql, user_id)
             self.result = self.request.fetchone()
-            print("Db().get_name(): Got")
-            return self.result["name"]
+            print("Db().get_name_team(): Got")
+            return self.result["name_team"]
         else:
             return ""
 
