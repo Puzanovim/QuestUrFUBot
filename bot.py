@@ -8,17 +8,26 @@ from config import TOKEN
 from messages import MESSAGES, questions, institutes
 from States.registrationState import Registration
 from States.questState import Quest, set_defined_state
-from db import Db
-
+from db import engine
+from models import Base
+from repository import Db
 
 bot = Bot(token=TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 db = Db()
 
+STARTUP = True
+
 
 @dp.message_handler(commands=['start'])
 async def process_start_command(message: types.Message):
+    global STARTUP
+    if STARTUP:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+            await conn.run_sync(Base.metadata.create_all)
+        STARTUP = False
     await Registration.name_team.set()
     await message.reply(MESSAGES['start'], reply=False)
     await message.reply(MESSAGES['name_team'], reply=False)
@@ -31,13 +40,13 @@ async def process_help_command(message: types.Message):
 
 @dp.message_handler(commands=['result'])
 async def process_result_command(message: types.Message):
-    text = MESSAGES["result"] + str(db.get_result(message.from_user.id))
+    text = MESSAGES["result"] + str(await db.get_result(message.from_user.id))
     await message.reply(text, reply=False)
 
 
 @dp.message_handler(commands=["answers"])
 async def process_answer_command(message: types.Message):
-    if db.get_current_question(message.from_user.id) > 15:
+    if await db.get_current_question(message.from_user.id) > 15:
         text = "Ответы на квест:\n" \
                "------------------------------------------------------\n"
         for number in questions:
@@ -60,7 +69,7 @@ async def process_name_team(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['name'] = message.text
 
-    db.create_team(message.from_user.id, message.text)
+    await db.create_team(message.from_user.id, message.text)
     await Registration.next()
     await message.reply(MESSAGES['contact_face'], reply=False)
 
@@ -68,12 +77,12 @@ async def process_name_team(message: types.Message, state: FSMContext):
 @dp.message_handler(state=Registration.contact_face)
 async def process_contact_face(message: types.Message, state: FSMContext):
     """
-    Process user name
+    Process username
     """
     async with state.proxy() as data:
         data['name'] = message.text
 
-    db.add_contact_face(message.from_user.id, message.text)
+    await db.add_contact_face(message.from_user.id, message.text)
     await Registration.next()
     await message.reply(MESSAGES['link_vk'], reply=False)
 
@@ -86,7 +95,7 @@ async def process_link_vk(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['link_vk'] = message.text
 
-    db.add_link_vk(message.from_user.id, message.text)
+    await db.add_link_vk(message.from_user.id, message.text)
     await Registration.next()
     await message.reply(MESSAGES['tel_number'], reply=False)
 
@@ -99,7 +108,7 @@ async def process_tel_number(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['tel_number'] = message.text
 
-    db.add_tel_number(message.from_user.id, message.text)
+    await db.add_tel_number(message.from_user.id, message.text)
     markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     for institut in institutes.keys():
         institut_btn = KeyboardButton(institut)
@@ -117,7 +126,7 @@ async def process_institute(message: types.Message, state: FSMContext):
         data['institute'] = message.text
 
     # добавляем институт в БД
-    db.add_institute(message.from_user.id, message.text)
+    await db.add_institute(message.from_user.id, message.text)
     await state.finish()
     await message.reply(MESSAGES['end_reg'], reply=False)
 
@@ -125,7 +134,7 @@ async def process_institute(message: types.Message, state: FSMContext):
 @dp.message_handler(commands=['start_Quest'])
 async def start_quest(message: types.Message, state: FSMContext):
     markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    current_question = db.get_current_question(user_id=message.from_user.id)
+    current_question = await db.get_current_question(user_id=message.from_user.id)
     if current_question > len(questions):
         text = MESSAGES['you are finished']
         markup = ReplyKeyboardRemove()
@@ -135,7 +144,7 @@ async def start_quest(message: types.Message, state: FSMContext):
             current_question -= 1
             await set_defined_state(current_question)
         else:
-            db.increment_current_question(message.from_user.id, 0)
+            await db.increment_current_question(message.from_user.id, 0)
             current_question = 1
             await Quest.Task1.set()
         question = questions[current_question]
@@ -160,7 +169,7 @@ async def start_quest(message: types.Message, state: FSMContext):
             # send question
             await message.reply(text, reply_markup=markup, reply=False)
         if current_question == 9:
-            db.increment_current_question(message.from_user.id, current_question)
+            await db.increment_current_question(message.from_user.id, current_question)
             text = question["Move"] + MESSAGES["go"]
             markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
             go_btn = KeyboardButton("Поехали!")
@@ -177,7 +186,7 @@ async def work_func(message: types.Message, state: FSMContext):
     else:
         user_answer = message.text.lower()
         user_id: int = message.from_user.id
-        current_question: int = db.get_current_question(user_id)
+        current_question: int = await db.get_current_question(user_id)
         markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
 
         async with state.proxy() as data:
@@ -214,7 +223,7 @@ async def work_func(message: types.Message, state: FSMContext):
                 # send question
                 await message.reply(text, reply_markup=markup, reply=False)
             if current_question == 9:
-                db.increment_current_question(user_id, current_question)
+                await db.increment_current_question(user_id, current_question)
                 text = question["Move"] + MESSAGES["go"]
                 markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
                 go_btn = KeyboardButton("Поехали!")
@@ -226,15 +235,15 @@ async def work_func(message: types.Message, state: FSMContext):
             true_answer = question['Answer'].lower()
 
             if user_answer == true_answer:
-                db.set_point(user_id, current_question)
+                await db.set_point(user_id)
 
             if current_question == len(questions):
-                db.increment_current_question(user_id, current_question)
+                await db.increment_current_question(user_id, current_question)
                 text = MESSAGES['the_end']
                 markup = ReplyKeyboardRemove()
                 await state.finish()
             else:
-                db.increment_current_question(user_id, current_question)
+                await db.increment_current_question(user_id, current_question)
                 text = question["Move"] + MESSAGES["go"]
                 go_btn = KeyboardButton("Поехали!")
                 markup.add(go_btn)
@@ -272,4 +281,5 @@ async def get_handler_by_name(message: types.Message):
         await echo(message)
 
 
-executor.start_polling(dp, skip_updates=True)
+if __name__ == '__main__':
+    executor.start_polling(dp, skip_updates=True)
